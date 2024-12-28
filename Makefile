@@ -1,2 +1,3 @@
 build:
-	bash ./tscluster.sh
+	bash tscluster.sh install
+	tscluster
