@@ -80,7 +80,7 @@ install_tailscale() {
 # Set up OpenSSH server and disable password authentication
 setup_open_ssh() {
     # Check if SSH server is installed
-    if ! command -v ssh &> /dev/null; then
+    if ! command -v sshd &> /dev/null; then
         log "OpenSSH server is not installed. Installing it now..."
         if ! sudo apt install openssh-server -y; then
             error "Failed to install OpenSSH server. Ensure you have sudo privileges."
