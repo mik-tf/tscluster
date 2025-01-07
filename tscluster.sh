@@ -77,15 +77,45 @@ install_tailscale() {
     log "Tailscale daemon is: ${status##*Active: }"
 }
 
-# Disable password authentication and restart SSH
-disable_password_auth() {
+# Set up OpenSSH server and disable password authentication
+setup_open_ssh() {
+    # Check if SSH server is installed
+    if ! command -v ssh &> /dev/null; then
+        log "OpenSSH server is not installed. Installing it now..."
+        if ! sudo apt install openssh-server -y; then
+            error "Failed to install OpenSSH server. Ensure you have sudo privileges."
+        fi
+    fi
+
+    # Enable and start the SSH service
+    log "Enabling and starting SSH service..."
+    if ! sudo systemctl enable --now ssh; then
+        error "Failed to enable/start SSH service. Ensure you have sudo privileges."
+    fi
+
+    # Check if the SSH configuration file exists
+    if [[ ! -f /etc/ssh/sshd_config ]]; then
+        error "SSH configuration file (/etc/ssh/sshd_config) not found. Ensure the SSH server is installed."
+    fi
+
     log "Disabling password authentication in SSH..."
+    log "Backing up SSH configuration..."
+    sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+
+    log "Updating SSH configuration with sudo..."
     if ! sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config; then
         error "Failed to update SSH configuration. Ensure you have sudo privileges."
     fi
 
+    log "Verifying SSH configuration syntax..."
+    if ! sudo sshd -t -f /etc/ssh/sshd_config; then
+        error "SSH configuration syntax error. Restoring backup..."
+        sudo cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config
+        error "SSH configuration restored from backup. Please check the file manually."
+    fi
+
     log "Restarting SSH service..."
-    if ! sudo systemctl restart sshd; then
+    if ! sudo systemctl restart ssh; then
         error "Failed to restart SSH service. Ensure you have sudo privileges."
     fi
 
@@ -120,6 +150,9 @@ setup_node() {
             chmod 700 "$ssh_dir"
         fi
 
+        # Set up OpenSSH server and disable password authentication
+        setup_open_ssh
+
         # Fetch public keys from GitHub
         log "Fetching public keys from GitHub..."
         if ! curl -s "https://github.com/$git_user.keys" -o /tmp/github_keys; then
@@ -133,9 +166,6 @@ setup_node() {
 
         log "Public keys from GitHub user $git_user have been added to $authorized_keys_file."
     fi
-
-    # Disable password authentication for all node types
-    disable_password_auth
 
     log "Setting up a ${node_type} node..."
     log "Follow the printed URL and authenticate to Tailscale if you are not logged in yet."
