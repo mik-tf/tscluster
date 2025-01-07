@@ -77,6 +77,21 @@ install_tailscale() {
     log "Tailscale daemon is: ${status##*Active: }"
 }
 
+# Disable password authentication and restart SSH
+disable_password_auth() {
+    log "Disabling password authentication in SSH..."
+    if ! sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config; then
+        error "Failed to update SSH configuration. Ensure you have sudo privileges."
+    fi
+
+    log "Restarting SSH service..."
+    if ! sudo systemctl restart sshd; then
+        error "Failed to restart SSH service. Ensure you have sudo privileges."
+    fi
+
+    log "Password authentication has been disabled. Only public key authentication is allowed."
+}
+
 # Set up node with optional SSH or public key
 setup_node() {
     local node_type="$1"
@@ -86,6 +101,9 @@ setup_node() {
     # Add --ssh flag for managed nodes (unless using public key)
     if [[ "$node_type" == "managed" && -z "$git_user" ]]; then
         flags="--ssh"
+    else
+        # Disable SSH for non-SSH nodes (control nodes and managed nodes with public key)
+        flags="--ssh=false"
     fi
 
     # If a GitHub user is provided, set up public key authentication
@@ -115,6 +133,9 @@ setup_node() {
 
         log "Public keys from GitHub user $git_user have been added to $authorized_keys_file."
     fi
+
+    # Disable password authentication for all node types
+    disable_password_auth
 
     log "Setting up a ${node_type} node..."
     log "Follow the printed URL and authenticate to Tailscale if you are not logged in yet."
