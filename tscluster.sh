@@ -1,7 +1,9 @@
 #!/bin/bash
 
-# Tool name
-tool_name="tscluster"
+# Get script information dynamically
+SCRIPT_NAME=$(basename "$0")
+INSTALL_NAME="${SCRIPT_NAME%.*}"  # Removes the .sh extension if it exists
+DISPLAY_NAME="${INSTALL_NAME^^}"  # Convert to uppercase for display
 
 # Color codes for output
 RED='\033[0;31m'
@@ -30,23 +32,23 @@ install() {
   if ! sudo mkdir -p "$install_dir"; then
     error "Error creating directory $install_dir. Ensure you have sudo privileges."
   fi
-  install_path="$install_dir/$tool_name"
+  install_path="$install_dir/$INSTALL_NAME"
   if ! sudo cp "$0" "$install_path" && ! sudo chmod +x "$install_path"; then
-      error "Error installing $tool_name. Ensure you have sudo privileges."
+      error "Error installing $INSTALL_NAME. Ensure you have sudo privileges."
   fi
-  log "$tool_name installed to $install_path."
+  log "$DISPLAY_NAME installed to $install_path."
 }
 
 # Uninstall script
 uninstall() {
-  uninstall_path="/usr/local/bin/$tool_name"
+  uninstall_path="/usr/local/bin/$INSTALL_NAME"
   if [[ -f "$uninstall_path" ]]; then
     if ! sudo rm "$uninstall_path"; then
-      error "Error uninstalling $tool_name. Ensure you have sudo privileges."
+      error "Error uninstalling $INSTALL_NAME. Ensure you have sudo privileges."
     fi
-    log "$tool_name successfully uninstalled."
+    log "$DISPLAY_NAME successfully uninstalled."
   else
-    warn "$tool_name is not installed in /usr/local/bin."
+    warn "$DISPLAY_NAME is not installed in /usr/local/bin."
   fi
 }
 
@@ -90,6 +92,37 @@ setup_node() {
     log "${node_type^} node setup complete."
 }
 
+# Set up managed node with public key
+setup_managed_node_with_public_key() {
+    local git_user="$1"
+    local ssh_dir="$HOME/.ssh"
+    local authorized_keys_file="$ssh_dir/authorized_keys"
+
+    log "Setting up managed node with public key from GitHub user $git_user..."
+
+    # Create .ssh directory if it doesn't exist
+    if [[ ! -d "$ssh_dir" ]]; then
+        log "Creating .ssh directory..."
+        mkdir -p "$ssh_dir"
+        chmod 700 "$ssh_dir"
+    fi
+
+    # Fetch public keys from GitHub
+    log "Fetching public keys from GitHub..."
+    if ! curl -s "https://github.com/$git_user.keys" -o /tmp/github_keys; then
+        error "Failed to fetch public keys from GitHub. Check the GitHub username and your internet connection."
+    fi
+
+    # Append keys to authorized_keys file
+    log "Appending public keys to authorized_keys..."
+    cat /tmp/github_keys >> "$authorized_keys_file"
+    chmod 600 "$authorized_keys_file"
+
+    log "Public keys from GitHub user $git_user have been added to $authorized_keys_file."
+
+    # Set up Tailscale without --ssh
+    setup_node "managed"
+}
 
 # Main execution
 case "$1" in
@@ -102,37 +135,45 @@ case "$1" in
     *)
         # Interactive menu
         echo
-        echo -e "${GREEN}Welcome to the Tailscale cluster tool!${NC}"
+        echo -e "${GREEN}Welcome to the $DISPLAY_NAME tool!${NC}"
         echo
         echo "Run this script on each managed node, then run it on the control node."
         echo
 
         while true; do
             echo "What would you like to do?"
-            echo "1. Set a managed node"
-            echo "2. Set a control node"
-            echo "3. Exit"
-            read -p "Please enter your choice [1-3]: " choice
+            echo "1. Set a control node"
+            echo "2. Set a managed node"
+            echo "3. Set a managed node with public key"
+            echo "4. Exit"
+            read -p "Please enter your choice [1-4]: " choice
 
             case $choice in
                 1)
                     install_tailscale
-                    setup_node "managed"
-                    log "Setup for managed node for $tool_name is complete. Exiting..."
+                    setup_node "control"
+                    log "Setup for control node for $DISPLAY_NAME is complete. Exiting..."
                     break
                     ;;
                 2)
                     install_tailscale
-                    setup_node "control"
-                    log "Setup for control node for $tool_name is complete. Exiting..."
+                    setup_node "managed"
+                    log "Setup for managed node for $DISPLAY_NAME is complete. Exiting..."
                     break
                     ;;
                 3)
+                    read -p "Enter the GitHub username: " git_user
+                    install_tailscale
+                    setup_managed_node_with_public_key "$git_user"
+                    log "Setup for managed node with public key for $DISPLAY_NAME is complete. Exiting..."
+                    break
+                    ;;
+                4)
                     log "Exiting..."
                     break
                     ;;
                 *)
-                    warn "Invalid choice. Please enter a number between 1 and 3."
+                    warn "Invalid choice. Please enter a number between 1 and 4."
                     ;;
             esac
         done
