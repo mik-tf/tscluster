@@ -114,6 +114,12 @@ setup_open_ssh() {
         error "SSH configuration restored from backup. Please check the file manually."
     fi
 
+    # Reload systemd daemon to apply changes
+    log "Reloading systemd daemon..."
+    if ! sudo systemctl daemon-reload; then
+        error "Failed to reload systemd daemon. Ensure you have sudo privileges."
+    fi
+
     log "Restarting SSH service..."
     if ! sudo systemctl restart ssh; then
         error "Failed to restart SSH service. Ensure you have sudo privileges."
