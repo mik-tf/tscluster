@@ -77,51 +77,51 @@ install_tailscale() {
     log "Tailscale daemon is: ${status##*Active: }"
 }
 
-# Set up node
+# Set up node with optional SSH or public key
 setup_node() {
     local node_type="$1"
+    local git_user="$2"
     local flags=""
-    
-    [[ "$node_type" == "managed" ]] && flags="--ssh"
-    
+
+    # Add --ssh flag for managed nodes (unless using public key)
+    if [[ "$node_type" == "managed" && -z "$git_user" ]]; then
+        flags="--ssh"
+    fi
+
+    # If a GitHub user is provided, set up public key authentication
+    if [[ -n "$git_user" ]]; then
+        local ssh_dir="$HOME/.ssh"
+        local authorized_keys_file="$ssh_dir/authorized_keys"
+
+        log "Setting up managed node with public key from GitHub user $git_user..."
+
+        # Create .ssh directory if it doesn't exist
+        if [[ ! -d "$ssh_dir" ]]; then
+            log "Creating .ssh directory..."
+            mkdir -p "$ssh_dir"
+            chmod 700 "$ssh_dir"
+        fi
+
+        # Fetch public keys from GitHub
+        log "Fetching public keys from GitHub..."
+        if ! curl -s "https://github.com/$git_user.keys" -o /tmp/github_keys; then
+            error "Failed to fetch public keys from GitHub. Check the GitHub username and your internet connection."
+        fi
+
+        # Append keys to authorized_keys file
+        log "Appending public keys to authorized_keys..."
+        cat /tmp/github_keys >> "$authorized_keys_file"
+        chmod 600 "$authorized_keys_file"
+
+        log "Public keys from GitHub user $git_user have been added to $authorized_keys_file."
+    fi
+
     log "Setting up a ${node_type} node..."
     log "Follow the printed URL and authenticate to Tailscale if you are not logged in yet."
     if ! sudo tailscale up $flags; then
         error "Failed to start Tailscale in ${node_type} node mode. Check your Tailscale configuration."
     fi
     log "${node_type^} node setup complete."
-}
-
-# Set up managed node with public key
-setup_managed_node_with_public_key() {
-    local git_user="$1"
-    local ssh_dir="$HOME/.ssh"
-    local authorized_keys_file="$ssh_dir/authorized_keys"
-
-    log "Setting up managed node with public key from GitHub user $git_user..."
-
-    # Create .ssh directory if it doesn't exist
-    if [[ ! -d "$ssh_dir" ]]; then
-        log "Creating .ssh directory..."
-        mkdir -p "$ssh_dir"
-        chmod 700 "$ssh_dir"
-    fi
-
-    # Fetch public keys from GitHub
-    log "Fetching public keys from GitHub..."
-    if ! curl -s "https://github.com/$git_user.keys" -o /tmp/github_keys; then
-        error "Failed to fetch public keys from GitHub. Check the GitHub username and your internet connection."
-    fi
-
-    # Append keys to authorized_keys file
-    log "Appending public keys to authorized_keys..."
-    cat /tmp/github_keys >> "$authorized_keys_file"
-    chmod 600 "$authorized_keys_file"
-
-    log "Public keys from GitHub user $git_user have been added to $authorized_keys_file."
-
-    # Set up Tailscale without --ssh
-    setup_node "managed"
 }
 
 # Main execution
@@ -143,7 +143,7 @@ case "$1" in
         while true; do
             echo "What would you like to do?"
             echo "1. Set a control node"
-            echo "2. Set a managed node"
+            echo "2. Set a managed node with SSH"
             echo "3. Set a managed node with public key"
             echo "4. Exit"
             read -p "Please enter your choice [1-4]: " choice
@@ -164,7 +164,7 @@ case "$1" in
                 3)
                     read -p "Enter the GitHub username: " git_user
                     install_tailscale
-                    setup_managed_node_with_public_key "$git_user"
+                    setup_node "managed" "$git_user"
                     log "Setup for managed node with public key for $DISPLAY_NAME is complete. Exiting..."
                     break
                     ;;
