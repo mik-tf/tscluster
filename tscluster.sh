@@ -181,6 +181,25 @@ setup_node() {
     log "${node_type^} node setup complete."
 }
 
+# Configure passwordless sudo for the current user
+configure_passwordless_sudo() {
+    local user=$(whoami)
+
+    log "Configuring passwordless sudo for user $user..."
+
+    # Add the user to the sudoers file with NOPASSWD
+    if ! echo "$user ALL=(ALL) NOPASSWD: ALL" | sudo tee "/etc/sudoers.d/$user-nopasswd" > /dev/null; then
+        error "Failed to configure passwordless sudo. Ensure you have sudo privileges."
+    fi
+
+    # Set the correct permissions for the sudoers file
+    if ! sudo chmod 440 "/etc/sudoers.d/$user-nopasswd"; then
+        error "Failed to set permissions for the sudoers file. Ensure you have sudo privileges."
+    fi
+
+    log "Passwordless sudo has been configured for user $user."
+}
+
 # Main execution
 case "$1" in
     install)
@@ -202,8 +221,9 @@ case "$1" in
             echo "1. Set a control node"
             echo "2. Set a managed node with SSH"
             echo "3. Set a managed node with public key"
-            echo "4. Exit"
-            read -p "Please enter your choice [1-4]: " choice
+            echo "4. Set a managed node with public key and passwordless sudo"
+            echo "5. Exit"
+            read -p "Please enter your choice [1-5]: " choice
 
             case $choice in
                 1)
@@ -226,11 +246,19 @@ case "$1" in
                     break
                     ;;
                 4)
+                    read -p "Enter the GitHub username: " git_user
+                    install_tailscale
+                    setup_node "managed" "$git_user"
+                    configure_passwordless_sudo
+                    log "Setup for managed node with public key and passwordless sudo for $DISPLAY_NAME is complete. Exiting..."
+                    break
+                    ;;
+                5)
                     log "Exiting..."
                     break
                     ;;
                 *)
-                    warn "Invalid choice. Please enter a number between 1 and 4."
+                    warn "Invalid choice. Please enter a number between 1 and 5."
                     ;;
             esac
         done
